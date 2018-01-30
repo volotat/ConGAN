@@ -3,3 +3,7 @@ Continuous Adversarial Image Generator that can produce good images with relativ
 
 #### Model structure:  
 ![model_structure](ConGAN_Diagram.png)  
+
+#### Results example:
+- Faces: 100 examples, 20-dimensional latent space  
+![exmpls_faces](faces_table.png)  
