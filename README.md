@@ -1,6 +1,8 @@
 # ConGAN
 Continuous Adversarial Image Generator that can produce good images with relatively small number of examples and without any resolution dependencies.
 
+While training it creates small examples of generated images into 'images/' folder and saves current model into 'saved_model/' folder. After traning you only need "Generator" part of the model to produce new images.
+
 #### Model structure:  
 ![model_structure](ConGAN_Diagram.png)  
 
