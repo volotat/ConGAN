@@ -9,3 +9,5 @@ Continuous Adversarial Image Generator that can produce good images with relativ
 ![exmpls_faces](faces_table.png)  
 - Shoes: 50 examples, 50-dimentional latent space  
 [shoes_table.png](shoes_table.png)
+- Animals: 30 examples, 10-dimentional latent space  
+[animals_table.png](animals_table.png)
