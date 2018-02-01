@@ -15,4 +15,4 @@ While training it creates small examples of generated images into 'images/' fold
 [animals_table.png](animals_table.png) [[original set](animals.png)]
 
 #### P.S.
-If you have any questions or ideas about how this model could be improved or applied, feel free to contact me via email.
+If you have any questions or ideas about how this model could be improved or applied somewhere, feel free to contact me via email.
