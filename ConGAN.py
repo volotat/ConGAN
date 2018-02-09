@@ -13,18 +13,19 @@ import os
 import numpy as np
 
 
-EXAMPLES = 30
-LATENT_SPACE = 5
-INPUT_SPACE = 32
+EXAMPLES = 100
+LATENT_SPACE = 20
+INPUT_SPACE = 48
 CHANNELS = 3
 
 INPUT_IMG_SIZE = 200
 OUTPUT_IMG_SIZE = 64
 
-DATASET_FILE = 'animals.png'
+DATASET_FILE = 'faces.png'
 
 
-position_input = Input(shape = (2,))
+POSITION_INPUTS = 14
+position_input = Input(shape = (POSITION_INPUTS,))
 img_ident_input = Input(shape = (EXAMPLES,)) 
 latent_input = Input(shape = (LATENT_SPACE,))
 
@@ -32,7 +33,7 @@ latent_input = Input(shape = (LATENT_SPACE,))
 class ConGAN():
     def __init__(self):
         optimizer = Adam(0.001)
-        opt_small = Adam(0.0001) 
+        opt_small = Adam(0.0002) 
         
         inputs_real = [position_input, img_ident_input]
         inputs_fake = [position_input, latent_input]
@@ -57,6 +58,7 @@ class ConGAN():
         
         self.ident.trainable = True
         self.generator.trainable = True
+        self.generator.compile(loss='mse', optimizer=optimizer)
         self.discriminator.trainable = False
         
         self.generator_real_t = self.generator([position_input, self.ident([img_ident_input])])[0] #Train ident -> pixel as normal model
@@ -115,13 +117,13 @@ class ConGAN():
         draw_layer = Dense(32)(draw_layer)
         draw_layer = LeakyReLU(alpha=0.2)(draw_layer)
         
-        draw_layer = Dense(CHANNELS, activation='tanh')(draw_layer)
+        draw_layer = Dense(CHANNELS, activation= 'linear')(draw_layer)
 
         layer_cnc = keras.layers.concatenate([head_layer, position_layer, draw_layer]) 
         return Model([position_input, latent_input], [draw_layer, layer_cnc], name = 'GENERATOR')
         
     def build_discriminator(self):
-        input = Input(shape = (1059,))
+        input = Input(shape = (1075,))
         
         layer = input
         layer = Dense(512)(layer) 
@@ -147,6 +149,23 @@ class ConGAN():
         return imgs_grid, imgs_nois, imgs_chan
     
     
+    def stretch_data(self, data):
+        amin = np.amin(data, axis=0)
+        amax = np.amax(data, axis=0)
+        
+        indx = 0
+        for d in data:
+            #Here we stretch our given latent space in the way so it touches the boundaries
+            if (np.all(amax - amin != 0)):
+                data[indx] += -amin
+                data[indx] *= 2. / (amax - amin)
+                data[indx] += -1.
+            
+            indx += 1
+            
+        return data
+		
+    
     def train(self, epochs, batch_size=128, save_interval=50):
         part_batch = int(batch_size / 2)
         
@@ -156,11 +175,10 @@ class ConGAN():
         
         main_loss = 0
         for epoch in range(epochs):
-            
+        
             imgs_grid, imgs_nois, imgs_chan, = self.choose_rnd_data(batch_size)
             main_loss += self.generator_real.train_on_batch([imgs_grid, imgs_nois], imgs_chan)
            
-            
             imgs_grid, imgs_nois, imgs_chan = self.choose_rnd_data(batch_size)
             imgs_nois_rnd = np.random.uniform(-1,1,(batch_size, LATENT_SPACE))
             imgs_nois_rnd = np.around(imgs_nois_rnd * 5.) / 5. #By rounding we create "breathing space" for generator. It's necessary because sometime there is no way to create continuous interpolation between two good looking objects that still looks good at any points of this interpolation. If we try to get good results everywhere, we eventually prevent our model from generating good results somewhere.
@@ -174,13 +192,13 @@ class ConGAN():
             imgs_nois_rnd = np.around(imgs_nois_rnd * 5.) / 5.
             self.generator_fake.train_on_batch([imgs_grid, imgs_nois_rnd], ones)
             
-            if epoch % 50 == 0:
-                print (epoch, main_loss / 50.)
+            if epoch % 50 == 49:
+                print (epoch + 1, main_loss / 50.)
                 main_loss = 0
             
-            if epoch % save_interval == 0:
-                self.save_imgs(epoch)
-                self.save_models(epoch)
+            if epoch % save_interval == save_interval - 1:
+                self.save_imgs(epoch + 1)
+                self.save_models(epoch + 1)
 
                 
     def save_models(self, epoch):
@@ -188,14 +206,30 @@ class ConGAN():
         self.ident.save(path+'_ident.h5')
         self.generator.save(path+'_generator.h5')
         self.discriminator.save(path+'_discriminator.h5')
+        
+    def create_grid(self, half_size):
+        X,Y = np.mgrid[-half_size:half_size,-half_size:half_size] + 0.5
+        grid = np.vstack((X.flatten(), Y.flatten())).T / half_size
+        
+        #adding ability to construct rotation dependency
+        ref_points = np.array([[-1,-1], [1, 1], [-1, 1], [1, -1]])
+        sz = grid.shape[0]
+        add = np.empty((sz, 0))
+        for ref in ref_points:
+            grid_ = grid - ref
+            r = np.linalg.norm(grid_, axis = 1)
+            phi = np.arctan2(grid_[:,1], grid_[:,0]) 
+            add = np.concatenate((add, r.reshape(sz,1), np.sin(phi).reshape(sz,1), np.cos(phi).reshape(sz,1)), axis = 1) 
+        
+        grid = np.concatenate((grid, add), axis = 1)
+        return grid
     
     def save_imgs(self, epoch):
         out_size = OUTPUT_IMG_SIZE #Size of single image in output image set
         out_half_size = math.floor(out_size / 2)
-        
-        X,Y = np.mgrid[-out_half_size:out_half_size,-out_half_size:out_half_size] + 0.5
-        grid = np.vstack((X.flatten(), Y.flatten())).T / out_half_size #[-1, 1]
 
+        grid = self.create_grid(out_half_size)
+        
 
         im_out = Image.new("RGB", (out_size * 3, out_size * 3))
         fnt = ImageFont.truetype("arial.ttf", 10)
@@ -208,7 +242,7 @@ class ConGAN():
                 c_noise = c_noise.reshape(1, EXAMPLES)
                 c_noise = np.repeat(c_noise, grid.shape[0], axis=0)
             
-                predicted = self.generator_real.predict([grid, c_noise]) + 0.5
+                predicted = self.generator_real.predict([grid, c_noise])
                 val = self.discriminator_real.predict([grid, c_noise])
             else:
                 c_noise = np.random.uniform(-1,1,(LATENT_SPACE))
@@ -217,11 +251,11 @@ class ConGAN():
                 c_noise = c_noise.reshape(1, LATENT_SPACE)
                 c_noise = np.repeat(c_noise, grid.shape[0], axis=0)
                 
-                predicted = self.generator.predict([grid, c_noise])[0] + 0.5
+                predicted = self.generator.predict([grid, c_noise])[0]
                 val = self.discriminator_fake.predict([grid, c_noise])
             
-            predicted = np.clip(predicted, 0, 1)
-            predicted = (predicted * 255).astype(np.uint8).reshape(out_size, out_size, CHANNELS) 
+            predicted = np.clip(predicted, 0, 255) 
+            predicted = (predicted).astype(np.uint8).reshape(out_size, out_size, CHANNELS) 
             im = Image.fromarray(predicted)
             
             
@@ -249,17 +283,17 @@ class ConGAN():
             w = i % wh[0] * size
             h = math.floor (i / wh[0]) * size
             im = im_set.crop((w, h, w + size, h + size))	
-            im_arr[i] = np.array(im).reshape(size, size, CHANNELS) / 255.
+            im_arr[i] = np.array(im).reshape(size, size, CHANNELS)
 
-        im_arr = (im_arr-0.5) # [-0.5, 0.5]
         im_arr = im_arr.reshape(EXAMPLES * size * size, CHANNELS)
         print ('im_arr shape:', im_arr.shape)	
-        
-        X,Y = np.mgrid[-half_size:half_size,-half_size:half_size] + 0.5
-        grid = np.vstack((X.flatten(), Y.flatten())).T / half_size
-        grid = grid.reshape(1, (half_size * 2) ** 2, 2)
-        grid = np.repeat(grid, EXAMPLES, axis=0).reshape(EXAMPLES * size * size, 2)
+
+        grid = self.create_grid(half_size)
         print ('grid shape:', grid.shape)	
+        
+        grid_ = grid.reshape(1, (half_size * 2) ** 2, POSITION_INPUTS)
+        grid_ = np.repeat(grid_, EXAMPLES, axis=0).reshape(EXAMPLES * size * size, POSITION_INPUTS)
+        print ('grid_ shape:', grid_.shape)	
         
         lat_arr = np.zeros((EXAMPLES, EXAMPLES))
         pnt = np.arange(EXAMPLES)
@@ -271,7 +305,7 @@ class ConGAN():
         
         self.noise_for_true = noise
         self.train_chan = im_arr
-        self.train_grid = grid
+        self.train_grid = grid_
 
 	
 
