@@ -148,24 +148,6 @@ class ConGAN():
         
         return imgs_grid, imgs_nois, imgs_chan
     
-    
-    def stretch_data(self, data):
-        amin = np.amin(data, axis=0)
-        amax = np.amax(data, axis=0)
-        
-        indx = 0
-        for d in data:
-            #Here we stretch our given latent space in the way so it touches the boundaries
-            if (np.all(amax - amin != 0)):
-                data[indx] += -amin
-                data[indx] *= 2. / (amax - amin)
-                data[indx] += -1.
-            
-            indx += 1
-            
-        return data
-		
-    
     def train(self, epochs, batch_size=128, save_interval=50):
         part_batch = int(batch_size / 2)
         
