@@ -158,7 +158,7 @@ class ConGAN():
         main_loss = 0
         for epoch in range(epochs):
         
-            imgs_grid, imgs_nois, imgs_chan, = self.choose_rnd_data(batch_size)
+            imgs_grid, imgs_nois, imgs_chan = self.choose_rnd_data(batch_size)
             main_loss += self.generator_real.train_on_batch([imgs_grid, imgs_nois], imgs_chan)
            
             imgs_grid, imgs_nois, imgs_chan = self.choose_rnd_data(batch_size)
