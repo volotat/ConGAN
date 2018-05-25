@@ -14,6 +14,3 @@ While training it creates small examples of generated images into 'images/' fold
 [shoes_table.png](shoes_table.png) [[original set](shoes.png)]
 - Animals: 30 examples, 10-dimentional latent space  
 [animals_table.png](animals_table.png) [[original set](animals.png)]
-
-#### P.S.
-If you have any questions or ideas about how this model could be improved or applied somewhere, feel free to contact me via email.
