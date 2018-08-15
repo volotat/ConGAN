@@ -24,7 +24,7 @@ OUTPUT_IMG_SIZE = 64
 DATASET_FILE = 'faces.png'
 
 
-POSITION_INPUTS = 14
+POSITION_INPUTS = 2
 position_input = Input(shape = (POSITION_INPUTS,))
 img_ident_input = Input(shape = (EXAMPLES,)) 
 latent_input = Input(shape = (LATENT_SPACE,))
@@ -32,8 +32,8 @@ latent_input = Input(shape = (LATENT_SPACE,))
 
 class ConGAN():
     def __init__(self):
-        optimizer = Adam(0.001)
-        opt_small = Adam(0.0002) 
+        optimizer = Adam(0.0004, 0.5, clipnorm = 1)
+        opt_small = Adam(0.0002, 0.5, clipnorm = 1) 
         
         inputs_real = [position_input, img_ident_input]
         inputs_fake = [position_input, latent_input]
@@ -42,13 +42,13 @@ class ConGAN():
         if (not os.path.isfile('generator.h5')):
             img_ident_layer = Dense(LATENT_SPACE, activation='tanh')(img_ident_input) 
             self.ident = Model(img_ident_input, img_ident_layer, name = 'IDENT')
-            plot_model(self.ident, to_file='ident.png', show_shapes=True)
+            #plot_model(self.ident, to_file='ident.png', show_shapes=True)
             
             self.generator = self.build_generator()
-            plot_model(self.generator, to_file='generator.png', show_shapes=True)
+            #plot_model(self.generator, to_file='generator.png', show_shapes=True)
             
             self.discriminator = self.build_discriminator()
-            plot_model(self.discriminator, to_file='discriminator.png', show_shapes=True)
+            #plot_model(self.discriminator, to_file='discriminator.png', show_shapes=True)
         else:
             self.discriminator = load_model('discriminator.h5')
             self.generator = load_model('generator.h5')
@@ -64,12 +64,12 @@ class ConGAN():
         self.generator_real_t = self.generator([position_input, self.ident([img_ident_input])])[0] #Train ident -> pixel as normal model
         self.generator_real = Model(inputs_real, self.generator_real_t, name = 'generator_real')
         self.generator_real.compile(loss='mse', optimizer=optimizer)
-        plot_model(self.generator_real, to_file='generator_real.png', show_shapes=True)
+        #plot_model(self.generator_real, to_file='generator_real.png', show_shapes=True)
 
         self.generator_fake_t = self.discriminator(self.generator(inputs_fake)[1])   #Train noise -> 1 on discriminator
         self.generator_fake = Model(inputs_fake, self.generator_fake_t, name = 'generator_fake')
         self.generator_fake.compile(loss='binary_crossentropy', optimizer=opt_small)
-        plot_model(self.generator_fake, to_file='generator_fake.png', show_shapes=True)
+        #plot_model(self.generator_fake, to_file='generator_fake.png', show_shapes=True)
         
         
         
@@ -81,15 +81,18 @@ class ConGAN():
         self.discriminator_real_t = self.discriminator(self.generator([position_input, self.ident([img_ident_input])])[1])   #Train discriminator assign ident -> 1
         self.discriminator_real = Model(inputs_real, self.discriminator_real_t, name = 'discriminator_real')
         self.discriminator_real.compile(loss='binary_crossentropy', optimizer=opt_small)
-        plot_model(self.discriminator_real, to_file='discriminator_real.png', show_shapes=True)
+        #plot_model(self.discriminator_real, to_file='discriminator_real.png', show_shapes=True)
 
         
         self.discriminator_fake_t = self.discriminator(self.generator(inputs_fake)[1])   #Train discriminator assign noise -> 0
         self.discriminator_fake = Model(inputs_fake, self.discriminator_fake_t, name = 'discriminator_fake')
         self.discriminator_fake.compile(loss='binary_crossentropy', optimizer=opt_small)
-        plot_model(self.discriminator_fake, to_file='discriminator_fake.png', show_shapes=True)
+        #plot_model(self.discriminator_fake, to_file='discriminator_fake.png', show_shapes=True)
         
 
+    # Do not use Batch Normalization anywhere, it will be harmful for discriminator ability 
+    # to distinguish good and bad samples, and as a result it will break the generator
+    
     def build_generator(self):
         position_layer = Dense(INPUT_SPACE)(position_input) 
         position_layer = LeakyReLU(alpha=0.2)(position_layer) 
@@ -101,6 +104,7 @@ class ConGAN():
         head_layer = LeakyReLU(alpha=0.2)(head_layer) 
         head_layer = Dense(512)(head_layer) 
         head_layer = LeakyReLU(alpha=0.2)(head_layer) 
+        
         head_layer = Dense(1024)(head_layer) 
         head_layer = LeakyReLU(alpha=0.2)(head_layer) 
         head_layer = Dense(1024)(head_layer) 
@@ -109,6 +113,7 @@ class ConGAN():
         head_layer = LeakyReLU(alpha=0.2)(head_layer) 
         head_layer = Dense(1024)(head_layer) 
         head_layer = LeakyReLU(alpha=0.2)(head_layer) 
+        
         
         #Draw part predict color in concrete spot
         draw_layer = head_layer
@@ -162,16 +167,14 @@ class ConGAN():
             main_loss += self.generator_real.train_on_batch([imgs_grid, imgs_nois], imgs_chan)
            
             imgs_grid, imgs_nois, imgs_chan = self.choose_rnd_data(batch_size)
-            imgs_nois_rnd = np.random.uniform(-1,1,(batch_size, LATENT_SPACE))
-            imgs_nois_rnd = np.around(imgs_nois_rnd * 5.) / 5. #By rounding we create "breathing space" for generator. It's necessary because sometime there is no way to create continuous interpolation between two good looking objects that still looks good at any points of this interpolation. If we try to get good results everywhere, we eventually prevent our model from generating good results somewhere.
+            imgs_nois_rnd = np.random.normal(0,1,(batch_size, LATENT_SPACE))
             imgs_nois_rnd[part_batch:] = self.ident.predict(imgs_nois[part_batch:])
             
             self.discriminator_fake.train_on_batch([imgs_grid, imgs_nois_rnd], stack)
             
             
             imgs_grid, imgs_nois, imgs_chan = self.choose_rnd_data(batch_size)
-            imgs_nois_rnd = np.random.uniform(-1,1,(batch_size, LATENT_SPACE))
-            imgs_nois_rnd = np.around(imgs_nois_rnd * 5.) / 5.
+            imgs_nois_rnd = np.random.normal(0,1,(batch_size, LATENT_SPACE))
             self.generator_fake.train_on_batch([imgs_grid, imgs_nois_rnd], ones)
             
             if epoch % 50 == 49:
@@ -193,6 +196,10 @@ class ConGAN():
         X,Y = np.mgrid[-half_size:half_size,-half_size:half_size] + 0.5
         grid = np.vstack((X.flatten(), Y.flatten())).T / half_size
         
+        # This part of code is highly unnecessary, but might be helpful if you have some 
+        # kind of rotation diversity in your data
+        
+        '''
         #adding ability to construct rotation dependency
         ref_points = np.array([[-1,-1], [1, 1], [-1, 1], [1, -1]])
         sz = grid.shape[0]
@@ -204,7 +211,9 @@ class ConGAN():
             add = np.concatenate((add, r.reshape(sz,1), np.sin(phi).reshape(sz,1), np.cos(phi).reshape(sz,1)), axis = 1) 
         
         grid = np.concatenate((grid, add), axis = 1)
+        '''
         return grid
+    
     
     def save_imgs(self, epoch):
         out_size = OUTPUT_IMG_SIZE #Size of single image in output image set
@@ -227,8 +236,9 @@ class ConGAN():
                 predicted = self.generator_real.predict([grid, c_noise])
                 val = self.discriminator_real.predict([grid, c_noise])
             else:
-                c_noise = np.random.uniform(-1,1,(LATENT_SPACE))
-                c_noise = np.around(c_noise * 5.) / 5.
+                #c_noise = np.random.uniform(-1,1,(LATENT_SPACE))
+                c_noise = np.random.normal(0,1,(LATENT_SPACE))
+                #c_noise = np.around(c_noise * 5.) / 5.
                 
                 c_noise = c_noise.reshape(1, LATENT_SPACE)
                 c_noise = np.repeat(c_noise, grid.shape[0], axis=0)
@@ -236,7 +246,7 @@ class ConGAN():
                 predicted = self.generator.predict([grid, c_noise])[0]
                 val = self.discriminator_fake.predict([grid, c_noise])
             
-            predicted = np.clip(predicted, 0, 255) 
+            predicted = np.clip(predicted *  255., 0, 255) 
             predicted = (predicted).astype(np.uint8).reshape(out_size, out_size, CHANNELS) 
             im = Image.fromarray(predicted)
             
@@ -248,9 +258,9 @@ class ConGAN():
             
             im_out.paste(im, (i % 3 * out_size, math.floor(i / 3) * out_size))
             print ('Img: ', i + 1)
-        
-        
+            
         im_out.save("images/out_%d.png" % epoch)
+        
 
     def prepare_data(self, image_container, size = 200):	
         half_size = math.floor(size / 2)
@@ -265,7 +275,7 @@ class ConGAN():
             w = i % wh[0] * size
             h = math.floor (i / wh[0]) * size
             im = im_set.crop((w, h, w + size, h + size))	
-            im_arr[i] = np.array(im).reshape(size, size, CHANNELS)
+            im_arr[i] = np.array(im).reshape(size, size, CHANNELS) / 255.
 
         im_arr = im_arr.reshape(EXAMPLES * size * size, CHANNELS)
         print ('im_arr shape:', im_arr.shape)	
