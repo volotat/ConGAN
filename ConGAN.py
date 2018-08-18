@@ -236,9 +236,7 @@ class ConGAN():
                 predicted = self.generator_real.predict([grid, c_noise])
                 val = self.discriminator_real.predict([grid, c_noise])
             else:
-                #c_noise = np.random.uniform(-1,1,(LATENT_SPACE))
                 c_noise = np.random.normal(0,1,(LATENT_SPACE))
-                #c_noise = np.around(c_noise * 5.) / 5.
                 
                 c_noise = c_noise.reshape(1, LATENT_SPACE)
                 c_noise = np.repeat(c_noise, grid.shape[0], axis=0)
